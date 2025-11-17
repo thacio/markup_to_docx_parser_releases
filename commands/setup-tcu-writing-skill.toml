@@ -1,0 +1,39 @@
+description = "Download and setup TCU writing skill for macOS in .auditoria/skills/ directory"
+prompt = """
+You are going to set up the TCU writing skill for macOS. Please follow these steps:
+
+**IMPORTANT**: This command is for macOS only. For other platforms, use the appropriate release (latest-linux or latest-windows).
+
+1. **Check for existing installation**:
+   - Check if `.auditaria/skills/tcu-writing/` exists
+   - If it exists, ask the user if they want to remove it and reinstall
+   - If yes, remove it with: `rm -rf .auditaria/skills/tcu-writing`
+
+2. **Create directory structure**:
+   - Create the directory: `mkdir -p .auditaria/skills/tcu-writing`
+
+3. **Download the latest release**:
+   - Download from: https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest-macos/tcu-parser-macos.zip
+   - Save to: `.auditaria/parser-macos.zip`
+   - Use: `curl -L -o .auditaria/parser-macos.zip https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest-macos/tcu-parser-macos.zip`
+
+4. **Extract files**:
+   - Extract to the skills directory: `unzip -o .auditaria/parser-macos.zip -d .auditaria/skills/`
+   - Rename: `mv .auditaria/skills/parser-macos .auditaria/skills/tcu-writing`
+   - Make executable: `chmod +x .auditaria/skills/tcu-writing/parser`
+
+5. **Clean up**:
+   - Remove the zip file: `rm .auditaria/parser-macos.zip`
+
+6. **Verify installation**:
+   - List contents: `ls -la .auditaria/skills/tcu-writing/`
+   - Test executable: `.auditoria/skills/tcu-writing/parser --help`
+
+7. **Display success message**:
+   - Show installation path
+   - Confirm macOS version installed
+   - Show usage instructions
+   - Mention available documentation files (syntax_guide.md, syntax_cheatsheet.md, tcu_writing_guide.md)
+
+Execute each step sequentially, showing the output of each command, and handle any errors gracefully.
+"""
