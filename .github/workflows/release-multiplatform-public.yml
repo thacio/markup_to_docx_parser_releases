@@ -1,0 +1,296 @@
+name: Release Multi-Platform Build (Public)
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  build-multiplatform:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            executable: tcu-parser.exe
+            zip-name: tcu-parser-windows.zip
+          - os: ubuntu-latest
+            platform: linux
+            executable: tcu-parser
+            zip-name: tcu-parser-linux.zip
+          - os: macos-latest
+            platform: macos
+            executable: tcu-parser
+            zip-name: tcu-parser-macos.zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Clone private repository
+        env:
+          GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        shell: bash
+        run: |
+          git clone https://thacio:${GITHUB_TOKEN}@github.com/thacio/md_to_docx_parser.git private-repo
+          cd private-repo
+          echo "Successfully cloned private repository"
+          git log -1 --oneline
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install nuitka ordered-set zstandard
+          pip install -r private-repo/tcu-writing/requirements.txt
+
+      - name: Generate embedded templates
+        shell: bash
+        run: |
+          cd private-repo/tcu-writing
+          echo "Generating embedded python-docx templates..."
+          python generate_embedded_templates.py
+          ls -lh embedded_templates.py || dir embedded_templates.py
+
+      - name: Compile with Nuitka (onefile mode)
+        shell: bash
+        run: |
+          cd private-repo/tcu-writing
+          echo "Compiling TRUE ONEFILE executable for ${{ matrix.platform }}..."
+
+          python -m nuitka \
+            --onefile \
+            --enable-plugin=anti-bloat \
+            --assume-yes-for-downloads \
+            --include-package-data=latex2mathml \
+            --output-filename=${{ matrix.executable }} \
+            parser.py
+
+          echo "Compilation complete!"
+          ls -lh ${{ matrix.executable }} || dir ${{ matrix.executable }}
+          file ${{ matrix.executable }} || echo "File info not available on Windows"
+
+      - name: Create distribution package
+        shell: bash
+        run: |
+          cd private-repo/tcu-writing
+
+          # Create a clean distribution directory
+          mkdir -p ../../tcu-parser-${{ matrix.platform }}
+
+          # Copy executable
+          cp ${{ matrix.executable }} ../../tcu-parser-${{ matrix.platform }}/
+
+          # Make executable on Unix systems
+          if [ "${{ matrix.platform }}" != "windows" ]; then
+            chmod +x ../../tcu-parser-${{ matrix.platform }}/${{ matrix.executable }}
+          fi
+
+          # Copy documentation and templates
+          cp -r assets ../../tcu-parser-${{ matrix.platform }}/
+          cp -r templates ../../tcu-parser-${{ matrix.platform }}/
+          cp syntax_guide.md ../../tcu-parser-${{ matrix.platform }}/ 2>/dev/null || true
+          cp syntax_cheatsheet.md ../../tcu-parser-${{ matrix.platform }}/ 2>/dev/null || true
+          cp tcu_writing_guide.md ../../tcu-parser-${{ matrix.platform }}/ 2>/dev/null || true
+          cp SKILL.md ../../tcu-parser-${{ matrix.platform }}/ 2>/dev/null || true
+          cp README.md ../../tcu-parser-${{ matrix.platform }}/ 2>/dev/null || true
+
+          # Create README
+          cat > ../../tcu-parser-${{ matrix.platform }}/README.txt << 'EOF'
+          TCU Parser - ${{ matrix.platform }} Distribution
+          ================================
+
+          True single-file executable with embedded templates.
+          No extraction to /tmp/ - fully self-contained!
+
+          Usage:
+            ./${{ matrix.executable }} input.md [-o output.docx]
+
+          Examples:
+            ./${{ matrix.executable }} templates/instrucao_padrao.md
+            ./${{ matrix.executable }} my-document.md -o my-output.docx
+
+          Documentation:
+            - syntax_guide.md (complete reference)
+            - syntax_cheatsheet.md (quick reference)
+            - tcu_writing_guide.md (TCU compliance guide)
+
+          Platform: ${{ matrix.platform }}
+          Build: Nuitka onefile with embedded python-docx templates
+          EOF
+
+      - name: Create ZIP archive (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path tcu-parser-${{ matrix.platform }} -DestinationPath ${{ matrix.zip-name }}
+          Get-Item ${{ matrix.zip-name }}
+
+      - name: Create ZIP archive (Unix)
+        if: matrix.platform != 'windows'
+        shell: bash
+        run: |
+          zip -r ${{ matrix.zip-name }} tcu-parser-${{ matrix.platform }}/
+          ls -lh ${{ matrix.zip-name }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-build
+          path: ${{ matrix.zip-name }}
+          retention-days: 1
+
+      - name: Get version info from private repo
+        id: version
+        shell: bash
+        run: |
+          cd private-repo
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -1)
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC" 2>/dev/null || echo "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') UTC")
+
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "commit_msg=${COMMIT_MSG}" >> $GITHUB_OUTPUT
+          echo "build_date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+
+  create-release:
+    needs: build-multiplatform
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display downloaded artifacts
+        run: |
+          ls -R artifacts/
+          mv artifacts/*/*.zip .
+          ls -lh *.zip
+
+      - name: Get version info
+        id: version
+        run: |
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          echo "build_date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+
+      - name: Create or Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest Multi-Platform Build"
+          body: |
+            ## TCU Parser - Multi-Platform Build
+
+            **Platforms:** Windows, Linux, macOS
+            **Build Type:** True onefile with embedded templates
+            **Build Date:** ${{ steps.version.outputs.build_date }}
+
+            ### Downloads
+
+            Choose your platform:
+            - **Windows**: `tcu-parser-windows.zip` (64-bit)
+            - **Linux**: `tcu-parser-linux.zip` (64-bit)
+            - **macOS**: `tcu-parser-macos.zip` (Universal - Intel & Apple Silicon)
+
+            ### Fixed URL Access
+
+            You can always get the latest builds from:
+            ```bash
+            # Windows
+            https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest/tcu-parser-windows.zip
+
+            # Linux
+            https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest/tcu-parser-linux.zip
+
+            # macOS
+            https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest/tcu-parser-macos.zip
+            ```
+
+            ### Quick Start
+
+            #### Windows
+            ```cmd
+            :: Extract the archive (use File Explorer or PowerShell)
+            Expand-Archive tcu-parser-windows.zip
+            cd tcu-parser-windows
+
+            :: Run it
+            tcu-parser.exe templates\instrucao_padrao.md
+            ```
+
+            #### Linux
+            ```bash
+            # Extract the archive
+            unzip tcu-parser-linux.zip
+            cd tcu-parser-linux
+
+            # Make executable (if needed)
+            chmod +x tcu-parser
+
+            # Run it
+            ./tcu-parser templates/instrucao_padrao.md
+            ```
+
+            #### macOS
+            ```bash
+            # Extract the archive
+            unzip tcu-parser-macos.zip
+            cd tcu-parser-macos
+
+            # Make executable (if needed)
+            chmod +x tcu-parser
+
+            # Run it
+            ./tcu-parser templates/instrucao_padrao.md
+            ```
+
+            ### What's Included
+
+            - ✅ Single executable file per platform (~21-25MB each)
+            - ✅ Embedded python-docx templates (no /tmp/ extraction)
+            - ✅ Example templates (instrucao_padrao, plano_auditoria, analise_separada)
+            - ✅ Complete documentation (syntax guides, TCU compliance)
+            - ✅ Assets (TCU logo, etc.)
+
+            ### Platform Details
+
+            | Platform | Executable | Size | Architecture |
+            |----------|-----------|------|--------------|
+            | Windows | tcu-parser.exe | ~23MB | x86_64 |
+            | Linux | tcu-parser | ~23MB | x86_64 |
+            | macOS | tcu-parser | ~25MB | Universal (Intel + ARM) |
+
+            ### Source
+
+            This build is generated from the private repository.
+          files: |
+            tcu-parser-windows.zip
+            tcu-parser-linux.zip
+            tcu-parser-macos.zip
+          draft: false
+          prerelease: false
+          make_latest: true
+
+      - name: Display release info
+        run: |
+          echo "========================================="
+          echo "MULTI-PLATFORM RELEASE PUBLISHED!"
+          echo "========================================="
+          echo ""
+          echo "Release Tag: latest"
+          echo "Build Date: ${{ steps.version.outputs.build_date }}"
+          echo ""
+          echo "Fixed download URLs:"
+          echo "Windows: https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest/tcu-parser-windows.zip"
+          echo "Linux:   https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest/tcu-parser-linux.zip"
+          echo "macOS:   https://github.com/thacio/markup_to_docx_parser_release/releases/download/latest/tcu-parser-macos.zip"
+          echo ""
+          echo "View release:"
+          echo "https://github.com/thacio/markup_to_docx_parser_release/releases/tag/latest"
+          echo ""
