@@ -1,0 +1,144 @@
+description = "Download and setup TCU writing skill (auto-detects platform: Windows/Linux/macOS)"
+prompt = """
+You are going to set up the TCU writing skill. This command automatically detects your platform and downloads the correct version.
+
+**Available release links for each platform:**
+- **Windows**: https://github.com/thacio/markup_to_docx_parser_releases/releases/download/latest/parser-windows.zip
+- **Linux**: https://github.com/thacio/markup_to_docx_parser_releases/releases/download/latest/parser-linux.zip
+- **macOS**: https://github.com/thacio/markup_to_docx_parser_releases/releases/download/latest/parser-macos.zip
+
+---
+
+## Step 1: Detect Platform
+
+First, detect the operating system and set the appropriate variables:
+- If Windows: Set PLATFORM=windows, ZIP_NAME=parser-windows.zip, EXECUTABLE=parser.exe
+- If Linux: Set PLATFORM=linux, ZIP_NAME=parser-linux.zip, EXECUTABLE=parser
+- If macOS: Set PLATFORM=macos, ZIP_NAME=parser-macos.zip, EXECUTABLE=parser
+
+---
+
+## Step 2: Check for Existing Installation
+
+**Windows (PowerShell):**
+```powershell
+if (Test-Path ".auditaria/skills/tcu-writing") {
+    # Ask user if they want to remove and reinstall
+    Remove-Item -Recurse -Force .auditaria/skills/tcu-writing
+}
+```
+
+**Linux/macOS (Bash):**
+```bash
+if [ -d ".auditaria/skills/tcu-writing" ]; then
+    # Ask user if they want to remove and reinstall
+    rm -rf .auditaria/skills/tcu-writing
+fi
+```
+
+---
+
+## Step 3: Create Directory Structure
+
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force -Path ".auditaria/skills/tcu-writing"
+```
+
+**Linux/macOS (Bash):**
+```bash
+mkdir -p .auditaria/skills/tcu-writing
+```
+
+---
+
+## Step 4: Download the Latest Release
+
+**Windows (PowerShell):**
+```powershell
+$url = "https://github.com/thacio/markup_to_docx_parser_releases/releases/download/latest/parser-windows.zip"
+Invoke-WebRequest -Uri $url -OutFile ".auditaria/parser-windows.zip"
+```
+
+**Linux/macOS (Bash with curl):**
+```bash
+# For Linux
+curl -L -o .auditaria/parser-linux.zip https://github.com/thacio/markup_to_docx_parser_releases/releases/download/latest/parser-linux.zip
+
+# For macOS
+curl -L -o .auditaria/parser-macos.zip https://github.com/thacio/markup_to_docx_parser_releases/releases/download/latest/parser-macos.zip
+```
+
+---
+
+## Step 5: Extract Files
+
+**Windows (PowerShell):**
+```powershell
+Expand-Archive -Path ".auditaria/parser-windows.zip" -DestinationPath ".auditaria/skills/" -Force
+Rename-Item -Path ".auditaria/skills/parser-windows" -NewName "tcu-writing"
+```
+
+**Linux/macOS (Bash):**
+```bash
+# For Linux
+unzip -o .auditaria/parser-linux.zip -d .auditaria/skills/
+mv .auditaria/skills/parser-linux .auditaria/skills/tcu-writing
+chmod +x .auditaria/skills/tcu-writing/parser
+
+# For macOS
+unzip -o .auditaria/parser-macos.zip -d .auditaria/skills/
+mv .auditaria/skills/parser-macos .auditaria/skills/tcu-writing
+chmod +x .auditaria/skills/tcu-writing/parser
+```
+
+---
+
+## Step 6: Clean Up
+
+**Windows (PowerShell):**
+```powershell
+Remove-Item ".auditaria/parser-windows.zip"
+```
+
+**Linux/macOS (Bash):**
+```bash
+rm .auditaria/parser-linux.zip  # or parser-macos.zip for macOS
+```
+
+---
+
+## Step 7: Verify Installation
+
+**Windows (PowerShell):**
+```powershell
+Get-ChildItem ".auditoria/skills/tcu-writing/"
+.auditaria/skills/tcu-writing/parser.exe --help
+```
+
+**Linux/macOS (Bash):**
+```bash
+ls -la .auditaria/skills/tcu-writing/
+.auditaria/skills/tcu-writing/parser --help
+```
+
+---
+
+## Step 8: Display Success Message
+
+Show:
+- Installation path: `.auditaria/skills/tcu-writing/`
+- Platform detected and installed
+- Executable location:
+  - Windows: `.auditaria/skills/tcu-writing/parser.exe`
+  - Linux/macOS: `.auditaria/skills/tcu-writing/parser`
+- Available documentation files:
+  - `syntax_guide.md` (complete reference)
+  - `syntax_cheatsheet.md` (quick reference)
+  - `tcu_writing_guide.md` (TCU compliance guide)
+  - Example templates in `templates/` directory
+
+---
+
+**IMPORTANT**: Execute the appropriate commands for the detected platform. Handle errors gracefully and provide clear feedback at each step.
+"""
