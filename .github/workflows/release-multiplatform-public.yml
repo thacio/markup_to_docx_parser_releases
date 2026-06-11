@@ -2,9 +2,35 @@ name: Release Multi-Platform Build (Public)
 
 on:
   workflow_dispatch:  # Manual trigger only
+    inputs:
+      password:
+        description: 'Build password (required to run)'
+        required: true
 
 jobs:
+  # Gate: the build only runs if the password matches the BUILD_PASSWORD repo
+  # secret. Set it under Settings -> Secrets and variables -> Actions.
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify build password
+        env:
+          EXPECTED: ${{ secrets.BUILD_PASSWORD }}
+          GIVEN: ${{ github.event.inputs.password }}
+        shell: bash
+        run: |
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::BUILD_PASSWORD secret is not set in this repository (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+          if [ "$GIVEN" != "$EXPECTED" ]; then
+            echo "::error::Invalid build password."
+            exit 1
+          fi
+          echo "Build password accepted."
+
   build-multiplatform:
+    needs: gate
     strategy:
       matrix:
         include:
