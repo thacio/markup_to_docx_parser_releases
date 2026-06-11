@@ -8,29 +8,7 @@ on:
         required: true
 
 jobs:
-  # Gate: the build only runs if the password matches the BUILD_PASSWORD repo
-  # secret. Set it under Settings -> Secrets and variables -> Actions.
-  gate:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Verify build password
-        env:
-          EXPECTED: ${{ secrets.BUILD_PASSWORD }}
-          GIVEN: ${{ github.event.inputs.password }}
-        shell: bash
-        run: |
-          if [ -z "$EXPECTED" ]; then
-            echo "::error::BUILD_PASSWORD secret is not set in this repository (Settings -> Secrets and variables -> Actions)."
-            exit 1
-          fi
-          if [ "$GIVEN" != "$EXPECTED" ]; then
-            echo "::error::Invalid build password."
-            exit 1
-          fi
-          echo "Build password accepted."
-
   build-multiplatform:
-    needs: gate
     strategy:
       matrix:
         include:
@@ -59,6 +37,24 @@ jobs:
           cd private-repo
           echo "Successfully cloned private repository"
           git log -1 --oneline
+
+      - name: Verify build password
+        shell: bash
+        env:
+          GIVEN: ${{ github.event.inputs.password }}
+        run: |
+          # The expected password lives in the private repo (build_password.txt),
+          # which only people with private-repo access can read.
+          EXPECTED="$(tr -d '\r\n' < private-repo/build_password.txt)"
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::build_password.txt missing or empty in the private repo."
+            exit 1
+          fi
+          if [ "$GIVEN" != "$EXPECTED" ]; then
+            echo "::error::Invalid build password."
+            exit 1
+          fi
+          echo "Build password accepted."
 
       - name: Set up Python
         uses: actions/setup-python@v5
