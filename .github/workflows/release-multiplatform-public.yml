@@ -1,11 +1,7 @@
 name: Release Multi-Platform Build (Public)
 
 on:
-  workflow_dispatch:  # Manual trigger only
-    inputs:
-      password:
-        description: 'Build password (required to run)'
-        required: true
+  workflow_dispatch:  # Manual trigger only (sole maintainer; no trigger gate)
 
 jobs:
   build-multiplatform:
@@ -37,24 +33,6 @@ jobs:
           cd private-repo
           echo "Successfully cloned private repository"
           git log -1 --oneline
-
-      - name: Verify build password
-        shell: bash
-        env:
-          GIVEN: ${{ github.event.inputs.password }}
-        run: |
-          # The expected password lives in the private repo (build_password.txt),
-          # which only people with private-repo access can read.
-          EXPECTED="$(tr -d '\r\n' < private-repo/build_password.txt)"
-          if [ -z "$EXPECTED" ]; then
-            echo "::error::build_password.txt missing or empty in the private repo."
-            exit 1
-          fi
-          if [ "$GIVEN" != "$EXPECTED" ]; then
-            echo "::error::Invalid build password."
-            exit 1
-          fi
-          echo "Build password accepted."
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -147,14 +125,19 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path parser-${{ matrix.platform }} -DestinationPath ${{ matrix.zip-name }}
+          # Password-protect the release zip (password lives in the private repo).
+          # ZipCrypto (not AES) so any standard tool / Python zipfile can extract it.
+          $PW = (Get-Content private-repo/build_password.txt -Raw).Trim()
+          7z a -tzip -mem=ZipCrypto -p"$PW" ${{ matrix.zip-name }} parser-${{ matrix.platform }}
           Get-Item ${{ matrix.zip-name }}
 
       - name: Create ZIP archive (Unix)
         if: matrix.platform != 'windows'
         shell: bash
         run: |
-          zip -r ${{ matrix.zip-name }} parser-${{ matrix.platform }}/
+          # Password-protect the release zip (ZipCrypto via Info-ZIP -P).
+          PW="$(tr -d '\r\n' < private-repo/build_password.txt)"
+          zip -r -P "$PW" ${{ matrix.zip-name }} parser-${{ matrix.platform }}/
           ls -lh ${{ matrix.zip-name }}
 
       - name: Upload build artifact
